@@ -1,0 +1,68 @@
+const express = require('express');
+const { Cart, Product } = require('./models'); // Импорт моделей
+const { authenticate } = require('./middleware/authenticate'); // Middleware для авторизации
+
+const router = express.Router();
+
+// Добавление товара в корзину
+router.post('/cart/add', authenticate, async (req, res) => {
+  const { productId, quantity } = req.body;
+  try {
+    // Проверяем, есть ли уже товар в корзине пользователя
+    const existingItem = await Cart.findOne({
+      where: { userId: req.user.id, productId },
+    });
+
+    if (existingItem) {
+      // Если товар уже в корзине, обновляем количество
+      existingItem.quantity += quantity;
+      await existingItem.save();
+      res.status(200).json(existingItem);
+    } else {
+      // Если товара еще нет, добавляем его
+      const cartItem = await Cart.create({ userId: req.user.id, productId, quantity });
+      res.status(201).json(cartItem);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Получение содержимого корзины
+router.get('/cart', authenticate, async (req, res) => {
+  try {
+    const cartItems = await Cart.findAll({
+      where: { userId: req.user.id },
+      include: Product, // Включаем данные о товарах
+    });
+    res.json(cartItems);
+  } catch (err) {
+    res.status(500).json({ error: 'Ошибка при загрузке корзины' });
+  }
+});
+
+// Удаление товара из корзины
+router.delete('/cart/:id', authenticate, async (req, res) => {
+  try {
+    const itemDeleted = await Cart.destroy({ where: { id: req.params.id } });
+    if (itemDeleted) {
+      res.status(204).send(); // Успешное удаление
+    } else {
+      res.status(404).json({ error: 'Товар не найден в корзине' });
+    }
+  } catch (err) {
+    res.status(500).json({ error: 'Ошибка при удалении товара' });
+  }
+});
+
+// Очистка корзины
+router.delete('/cart', authenticate, async (req, res) => {
+  try {
+    await Cart.destroy({ where: { userId: req.user.id } }); // Удаление всех товаров пользователя
+    res.status(204).send();
+  } catch (err) {
+    res.status(500).json({ error: 'Ошибка при очистке корзины' });
+  }
+});
+
+module.exports = router;
